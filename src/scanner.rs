@@ -207,11 +207,11 @@ impl<'a> Scanner<'a> {
     }
 
     fn match_next(&mut self, expected: char) -> bool {
-        if self.is_at_end() || *self.source_iter.peek().unwrap() != expected {
+        if self.is_at_end() || self.peek() != expected {
             return false;
         }
 
-        self.current += 1;
+        self.advance();
         true
     }
 

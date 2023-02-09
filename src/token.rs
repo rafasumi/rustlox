@@ -19,9 +19,17 @@ impl Token {
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.token_type {
-            TokenType::String(literal) => write!(f, "String {} {}", self.lexeme, literal),
-            TokenType::Number(literal) => write!(f, "Number {} {}", self.lexeme, literal),
-            _ => write!(f, "{:?} {}", self.token_type, self.lexeme),
+            TokenType::String(literal) => {
+                write!(f, "line {}: String {} {}", self.line, self.lexeme, literal)
+            }
+            TokenType::Number(literal) => {
+                write!(f, "line {}: Number {} {}", self.line, self.lexeme, literal)
+            }
+            _ => write!(
+                f,
+                "line {}: {:?} {}",
+                self.line, self.token_type, self.lexeme
+            ),
         }
     }
 }

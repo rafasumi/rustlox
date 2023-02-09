@@ -1,0 +1,11 @@
+var variable = 42;
+/* 
+  This block comment shouldn't be identified
+  /* 
+    This nested comment shouldn't break anything. 
+  
+    /* This is a nested comment within the nested comment */
+  */
+*/
+
+print variable;

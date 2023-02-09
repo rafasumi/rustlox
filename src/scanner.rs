@@ -180,11 +180,13 @@ impl<'a> Scanner<'a> {
     }
 
     fn peek(&mut self) -> char {
+        self.source_iter.reset_peek();
         *self.source_iter.peek().unwrap_or(&'\0')
     }
 
     fn peek_next(&mut self) -> char {
-        self.source_iter.peek();
+        self.source_iter.reset_peek();
+        self.source_iter.peek(); // Advance peeking "cursor"
         *self.source_iter.peek().unwrap_or(&'\0')
     }
 

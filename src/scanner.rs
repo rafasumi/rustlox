@@ -107,6 +107,8 @@ impl<'a> Scanner<'a> {
                     while self.peek() != '\n' && !self.is_at_end() {
                         self.advance();
                     }
+                } else if self.match_next('*') {
+                    self.block_comment();
                 } else {
                     self.add_token(TokenType::Slash);
                 }
@@ -177,6 +179,37 @@ impl<'a> Scanner<'a> {
         // Trim the surrounding quotes.
         let literal = self.source[self.start + 1..self.current - 1].to_owned();
         self.add_token(TokenType::String(literal));
+    }
+
+    fn block_comment(&mut self) {
+        let mut comment_level = 1;
+        while !self.is_at_end() {
+            let peek = self.peek();
+            let peek_next = self.peek();
+            
+            if peek == '/' && peek_next == '*' {
+                comment_level += 1;
+            }
+            
+            if peek == '*' && peek_next == '/' {
+                comment_level -= 1;
+            }
+
+            if comment_level == 0 {
+                self.advance();
+                self.advance();
+                break;
+            }
+
+            let c = self.advance();
+            if c == '\n' {
+                self.line += 1;
+            }
+        }
+
+        if comment_level != 0 {
+            error(&self.line, "Unterminated block comment.");
+        }
     }
 
     fn peek(&mut self) -> char {

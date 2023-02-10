@@ -186,7 +186,7 @@ impl<'a> Scanner<'a> {
         let mut comment_level = 1;
         while !self.is_at_end() {
             let peek = self.peek();
-            let peek_next = self.peek();
+            let peek_next = self.peek_next();
             
             if peek == '/' && peek_next == '*' {
                 comment_level += 1;

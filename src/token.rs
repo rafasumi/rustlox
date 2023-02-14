@@ -50,6 +50,8 @@ pub enum TokenType {
     Percent,
     Star,
     Semicolon,
+    Question,
+    Colon,
 
     // One or two character tokens.
     Bang,

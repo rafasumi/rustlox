@@ -30,7 +30,28 @@ impl<'a> Parser<'a> {
     }
 
     fn expression(&mut self) -> Result<Expr, ()> {
-        self.equality()
+        self.ternary()
+    }
+
+    fn ternary(&mut self) -> Result<Expr, ()> {
+        let mut expr = self.equality()?;
+
+        if self.check(TokenType::Question) {
+            self.advance();
+            let then_branch = self.equality()?;
+
+            if !self.check(TokenType::Colon) {
+                parse_error(self.previous(), "Expect ':' in ternary expression");
+                return Err(());
+            }
+
+            self.advance();
+            let else_branch = self.ternary()?;
+
+            expr = Expr::Ternary { condition: Box::new(expr), then_branch: Box::new(then_branch), else_branch: Box::new(else_branch) }
+        }
+
+        Ok(expr)
     }
 
     fn equality(&mut self) -> Result<Expr, ()> {

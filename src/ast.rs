@@ -1,6 +1,11 @@
 use crate::token::Token;
 
 pub enum Expr {
+    Ternary {
+        condition: Box<Expr>,
+        then_branch: Box<Expr>,
+        else_branch: Box<Expr>,
+    },
     Binary {
         left: Box<Expr>,
         operator: Token,
@@ -44,6 +49,18 @@ impl AstPrinter {
 impl Visitor<String> for AstPrinter {
     fn visit_expr(&mut self, expr: &Expr) -> String {
         match expr {
+            Expr::Ternary {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                format!(
+                    "({} ? {} : {})",
+                    self.visit_expr(condition),
+                    self.visit_expr(then_branch),
+                    self.visit_expr(else_branch)
+                )
+            }
             Expr::Binary {
                 left,
                 operator,

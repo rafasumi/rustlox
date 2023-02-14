@@ -78,6 +78,8 @@ impl<'a> Scanner<'a> {
             ';' => self.add_token(TokenType::Semicolon),
             '*' => self.add_token(TokenType::Star),
             '%' => self.add_token(TokenType::Percent),
+            '?' => self.add_token(TokenType::Question),
+            ':' => self.add_token(TokenType::Colon),
             '!' => {
                 let token_type = if self.match_next('=') {
                     TokenType::BangEqual

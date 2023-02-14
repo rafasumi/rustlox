@@ -45,18 +45,26 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn scan_tokens(&mut self) -> &Vec<Token> {
+    pub fn scan_tokens(&mut self) -> Result<&Vec<Token>, ()> {
+        let mut had_error = false;
         while !self.is_at_end() {
             // We are at the beginning of the next lexeme.
             self.start = self.current;
-            self.scan_token();
+            if let Err(_) = self.scan_token() {
+                had_error = true;
+            }
         }
 
         self.tokens.push(Token::new(TokenType::EOF, "", self.line));
-        &self.tokens
+
+        if !had_error {
+            Ok(&self.tokens)
+        } else {
+            Err(())
+        }
     }
 
-    fn scan_token(&mut self) {
+    fn scan_token(&mut self) -> Result<(), ()> {
         let c = self.advance();
         match c {
             '(' => self.add_token(TokenType::LeftParen),
@@ -109,24 +117,26 @@ impl<'a> Scanner<'a> {
                         self.advance();
                     }
                 } else if self.match_next('*') {
-                    self.block_comment();
+                    self.block_comment()?;
                 } else {
                     self.add_token(TokenType::Slash);
                 }
             }
             ' ' | '\r' | '\t' => (),
             '\n' => self.line += 1,
-            '"' => self.string(),
+            '"' => self.string()?,
             c => {
                 if c.is_digit(10) {
                     self.number();
                 } else if Scanner::is_alpha(c) {
                     self.identifier();
                 } else {
-                    error(&self.line, &format!("Unexpected character: \"{c}\"."))
+                    error(&self.line, &format!("Unexpected character: \"{c}\"."));
+                    return Err(());
                 }
             }
-        }
+        };
+        Ok(())
     }
 
     fn identifier(&mut self) {
@@ -160,7 +170,7 @@ impl<'a> Scanner<'a> {
         self.add_token(TokenType::Number(literal));
     }
 
-    fn string(&mut self) {
+    fn string(&mut self) -> Result<(), ()> {
         while self.peek() != '"' && !self.is_at_end() {
             if self.peek() == '\n' {
                 self.line += 1;
@@ -171,7 +181,7 @@ impl<'a> Scanner<'a> {
 
         if self.is_at_end() {
             error(&self.line, "Unterminated string.");
-            return;
+            return Err(());
         }
 
         // The closing ".
@@ -180,18 +190,19 @@ impl<'a> Scanner<'a> {
         // Trim the surrounding quotes.
         let literal = self.source[self.start + 1..self.current - 1].to_owned();
         self.add_token(TokenType::String(literal));
+        Ok(())
     }
 
-    fn block_comment(&mut self) {
+    fn block_comment(&mut self) -> Result<(), ()> {
         let mut comment_level = 1;
         while !self.is_at_end() {
             let peek = self.peek();
             let peek_next = self.peek_next();
-            
+
             if peek == '/' && peek_next == '*' {
                 comment_level += 1;
             }
-            
+
             if peek == '*' && peek_next == '/' {
                 comment_level -= 1;
             }
@@ -210,7 +221,10 @@ impl<'a> Scanner<'a> {
 
         if comment_level != 0 {
             error(&self.line, "Unterminated block comment.");
+            return Err(());
         }
+
+        Ok(())
     }
 
     fn peek(&mut self) -> char {

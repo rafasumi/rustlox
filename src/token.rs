@@ -47,7 +47,7 @@ pub enum TokenType {
     Minus,
     Plus,
     Slash,
-    Modulo,
+    Percent,
     Star,
     Semicolon,
 

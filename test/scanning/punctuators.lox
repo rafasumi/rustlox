@@ -9,7 +9,7 @@
 // expect: PLUS + null
 // expect: MINUS - null
 // expect: STAR * null
-// expect: Modulo %
+// expect: Percent %
 // expect: BANG_EQUAL != null
 // expect: EQUAL_EQUAL == null
 // expect: LESS_EQUAL <= null

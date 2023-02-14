@@ -90,7 +90,7 @@ impl<'a> Parser<'a> {
     fn factor(&mut self) -> Result<Expr, ()> {
         let mut expr = self.unary()?;
 
-        while match_types!(self, TokenType::Slash, TokenType::Star, TokenType::Modulo) {
+        while match_types!(self, TokenType::Slash, TokenType::Star, TokenType::Percent) {
             let operator = self.previous().to_owned();
             let right = self.unary()?;
             expr = Expr::Binary {

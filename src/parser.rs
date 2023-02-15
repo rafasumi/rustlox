@@ -38,7 +38,7 @@ impl<'a> Parser<'a> {
 
         if self.check(TokenType::Question) {
             self.advance();
-            let then_branch = self.equality()?;
+            let then_branch = self.ternary()?;
 
             if !self.check(TokenType::Colon) {
                 parse_error(self.previous(), "Expect ':' in ternary expression");
@@ -48,7 +48,11 @@ impl<'a> Parser<'a> {
             self.advance();
             let else_branch = self.ternary()?;
 
-            expr = Expr::Ternary { condition: Box::new(expr), then_branch: Box::new(then_branch), else_branch: Box::new(else_branch) }
+            expr = Expr::Ternary {
+                condition: Box::new(expr),
+                then_branch: Box::new(then_branch),
+                else_branch: Box::new(else_branch),
+            }
         }
 
         Ok(expr)

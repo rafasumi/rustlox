@@ -148,7 +148,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 let expr = self.expression()?;
                 self.consume(TokenType::RightParen, "Expect ')' after expression.")?;
-                Expr::Grouping(Box::new(expr))
+                return Ok(Expr::Grouping(Box::new(expr)))
             }
             _ => {
                 parse_error(self.peek(), "Expect expression.");

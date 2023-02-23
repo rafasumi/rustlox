@@ -2,7 +2,7 @@ use itertools::{Itertools, MultiPeek};
 use phf_macros::phf_map;
 use std::str::Chars;
 
-use crate::error::error;
+use crate::error::{error, Error};
 use crate::token::{Token, TokenType};
 
 static KEYWORDS: phf::Map<&'static str, TokenType> = phf_map! {
@@ -45,7 +45,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn scan_tokens(&mut self) -> Result<&Vec<Token>, ()> {
+    pub fn scan_tokens(&mut self) -> Result<&Vec<Token>, Error> {
         let mut had_error = false;
         while !self.is_at_end() {
             // We are at the beginning of the next lexeme.
@@ -60,7 +60,7 @@ impl<'a> Scanner<'a> {
         if !had_error {
             Ok(&self.tokens)
         } else {
-            Err(())
+            Err(Error::Lexical)
         }
     }
 

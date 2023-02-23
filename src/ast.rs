@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::token::Token;
 
 pub enum Expr {
@@ -12,18 +14,42 @@ pub enum Expr {
         right: Box<Expr>,
     },
     Grouping(Box<Expr>),
-    Literal(LiteralValue),
+    Literal(Object),
     Unary {
         operator: Token,
         right: Box<Expr>,
     },
 }
 
-pub enum LiteralValue {
+#[derive(Clone)]
+pub enum Object {
     String(String),
     Number(f64),
     Boolean(bool),
     Nil,
+}
+
+impl Object {
+    pub fn equals(&self, other: &Object) -> bool {
+        match (self, other) {
+            (Object::Boolean(lhs), Object::Boolean(rhs)) => lhs == rhs,
+            (Object::Number(lhs), Object::Number(rhs)) => lhs == rhs,
+            (Object::String(lhs), Object::String(rhs)) => lhs == rhs,
+            (Object::Nil, Object::Nil) => true,
+            _ => false,
+        }
+    }
+}
+
+impl fmt::Display for Object {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Object::String(val) => write!(f, "{}", val.to_string()),
+            Object::Number(val) => write!(f, "{}", val.to_string()),
+            Object::Boolean(val) => write!(f, "{}", val.to_string()),
+            Object::Nil => write!(f, "nil"),
+        }
+    }
 }
 
 pub trait Visitor<T> {
@@ -68,10 +94,10 @@ impl Visitor<String> for AstPrinter {
             } => self.parenthesize(&operator.lexeme, vec![&left, &right]),
             Expr::Grouping(expression) => self.parenthesize("group", vec![&expression]),
             Expr::Literal(value) => match value {
-                LiteralValue::String(string_val) => string_val.to_owned(),
-                LiteralValue::Number(number_val) => number_val.to_string(),
-                LiteralValue::Boolean(bool_val) => bool_val.to_string(),
-                LiteralValue::Nil => String::from("nil"),
+                Object::String(string_val) => string_val.to_owned(),
+                Object::Number(number_val) => number_val.to_string(),
+                Object::Boolean(bool_val) => bool_val.to_string(),
+                Object::Nil => String::from("nil"),
             },
             Expr::Unary { operator, right } => self.parenthesize(&operator.lexeme, vec![&right]),
         }

@@ -118,7 +118,7 @@ impl Visitor<Result<Object, Error>> for Interpreter {
                         _ => Interpreter::number_operand_err(operator),
                     },
                     TokenType::BangEqual => Ok(Object::Boolean(!left.equals(&right))),
-                    TokenType::EqualEqual => Ok(Object::Boolean(!left.equals(&right))),
+                    TokenType::EqualEqual => Ok(Object::Boolean(left.equals(&right))),
                     _ => unreachable!(),
                 }
             }

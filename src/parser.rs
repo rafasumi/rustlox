@@ -25,23 +25,117 @@ impl<'a> Parser<'a> {
         Self { tokens, current: 0 }
     }
 
-    pub fn parse(&mut self) -> Result<Expr, Error> {
-        self.expression()
+    pub fn parse(&mut self) -> Result<Vec<Stmt>, Error> {
+        let mut statements: Vec<Stmt> = Vec::new();
+        let mut had_error = false;
+        while !self.is_at_end() {
+            match self.declaration() {
+                Ok(statement) => statements.push(statement),
+                Err(_) => {
+                    had_error = true;
+                    self.synchronize();
+                }
+            }
+        }
+
+        if !had_error {
+            Ok(statements)
+        } else {
+            Err(Error::Syntax)
+        }
     }
 
-    fn expression(&mut self) -> Result<Expr, Error> {
-        self.ternary()
+    fn expression(&mut self) -> Result<Expr, ()> {
+        self.assignment()
     }
 
-    fn ternary(&mut self) -> Result<Expr, Error> {
+    fn declaration(&mut self) -> Result<Stmt, ()> {
+        if match_types!(self, TokenType::Var) {
+            self.var_declaration()
+        } else {
+            self.statement()
+        }
+    }
+
+    fn statement(&mut self) -> Result<Stmt, ()> {
+        if match_types!(self, TokenType::Print) {
+            self.print_statement()
+        } else if match_types!(self, TokenType::LeftBrace) {
+            Ok(Stmt::Block(self.block()?))
+        } else {
+            self.expression_statement()
+        }
+    }
+
+    fn print_statement(&mut self) -> Result<Stmt, ()> {
+        let value = self.expression()?;
+        self.consume(TokenType::Semicolon, "Expect ';' after value")?;
+        Ok(Stmt::Print(value))
+    }
+
+    fn var_declaration(&mut self) -> Result<Stmt, ()> {
+        let name = self
+            .consume(TokenType::Identifier, "Expect variable name.")?
+            .to_owned();
+        let initializer = if match_types!(self, TokenType::Equal) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+
+        self.consume(
+            TokenType::Semicolon,
+            "Expect ';' after variable declaration",
+        )?;
+        Ok(Stmt::Var { name, initializer })
+    }
+
+    fn expression_statement(&mut self) -> Result<Stmt, ()> {
+        let value = self.expression()?;
+        self.consume(TokenType::Semicolon, "Expect ';' after value")?;
+        Ok(Stmt::Expression(value))
+    }
+
+    fn block(&mut self) -> Result<Vec<Stmt>, ()> {
+        let mut statements = Vec::new();
+
+        while !self.check(TokenType::RightBrace) && !self.is_at_end() {
+            statements.push(self.declaration()?)
+        }
+
+        self.consume(TokenType::RightBrace, "Expect '}' after block.")?;
+        Ok(statements)
+    }
+
+    fn assignment(&mut self) -> Result<Expr, ()> {
+        let expr = self.ternary()?;
+
+        if match_types!(self, TokenType::Equal) {
+            let equals = self.previous().to_owned();
+            let value = self.assignment()?;
+
+            if let Expr::Variable(name) = expr {
+                return Ok(Expr::Assign {
+                    name,
+                    value: Box::new(value),
+                });
+            }
+
+            parse_error(&equals, "Invalid assignment target.");
+        }
+
+        Ok(expr)
+    }
+
+    fn ternary(&mut self) -> Result<Expr, ()> {
         let mut expr = self.equality()?;
 
-        if self.check(TokenType::Question) {
-            self.advance();
+        if match_types!(self, TokenType::Question) {
             let then_branch = self.ternary()?;
 
             if !self.check(TokenType::Colon) {
-                return Err(parse_error(self.previous(), "Expect ':' in ternary expression"));
+                parse_error(self.previous(), "Expect ':' in ternary expression");
+                return Err(());
             }
 
             self.advance();
@@ -57,7 +151,7 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn equality(&mut self) -> Result<Expr, Error> {
+    fn equality(&mut self) -> Result<Expr, ()> {
         let mut expr = self.comparison()?;
 
         while match_types!(self, TokenType::BangEqual, TokenType::EqualEqual) {
@@ -73,7 +167,7 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn comparison(&mut self) -> Result<Expr, Error> {
+    fn comparison(&mut self) -> Result<Expr, ()> {
         let mut expr = self.term()?;
 
         while match_types!(
@@ -95,7 +189,7 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn term(&mut self) -> Result<Expr, Error> {
+    fn term(&mut self) -> Result<Expr, ()> {
         let mut expr = self.factor()?;
 
         while match_types!(self, TokenType::Minus, TokenType::Plus) {
@@ -111,7 +205,7 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn factor(&mut self) -> Result<Expr, Error> {
+    fn factor(&mut self) -> Result<Expr, ()> {
         let mut expr = self.unary()?;
 
         while match_types!(self, TokenType::Slash, TokenType::Star, TokenType::Percent) {
@@ -127,7 +221,7 @@ impl<'a> Parser<'a> {
         Ok(expr)
     }
 
-    fn unary(&mut self) -> Result<Expr, Error> {
+    fn unary(&mut self) -> Result<Expr, ()> {
         if match_types!(self, TokenType::Bang, TokenType::Minus) {
             let operator = self.previous().to_owned();
             let right = self.unary()?;
@@ -140,31 +234,37 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn primary(&mut self) -> Result<Expr, Error> {
+    fn primary(&mut self) -> Result<Expr, ()> {
         let expr = match &self.peek().token_type {
             TokenType::False => Expr::Literal(Object::Boolean(false)),
             TokenType::True => Expr::Literal(Object::Boolean(true)),
             TokenType::Nil => Expr::Literal(Object::Nil),
             TokenType::Number(literal) => Expr::Literal(Object::Number(literal.to_owned())),
             TokenType::String(literal) => Expr::Literal(Object::String(literal.to_owned())),
+            TokenType::Identifier => Expr::Variable(self.peek().to_owned()),
             TokenType::LeftParen => {
+                // This is needed to consume the LeftParen Token, since we don't use match_types! here
                 self.advance();
                 let expr = self.expression()?;
                 self.consume(TokenType::RightParen, "Expect ')' after expression.")?;
                 return Ok(Expr::Grouping(Box::new(expr)));
             }
-            _ => return Err(parse_error(self.peek(), "Expect expression."))
+            _ => {
+                parse_error(self.peek(), "Expect expression.");
+                return Err(());
+            }
         };
 
         self.advance();
         Ok(expr)
     }
 
-    fn consume(&mut self, token_type: TokenType, message: &str) -> Result<&Token, Error> {
+    fn consume(&mut self, token_type: TokenType, message: &str) -> Result<&Token, ()> {
         if self.check(token_type) {
             Ok(self.advance())
         } else {
-            Err(parse_error(self.previous(), message))
+            parse_error(self.previous(), message);
+            Err(())
         }
     }
 

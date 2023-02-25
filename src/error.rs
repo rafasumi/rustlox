@@ -13,14 +13,12 @@ pub fn error(line: &u32, message: &str) {
     report(line, "", message);
 }
 
-pub fn parse_error(token: &Token, message: &str) -> Error {
+pub fn parse_error(token: &Token, message: &str) {
     if token.token_type == TokenType::EOF {
         report(&token.line, " at end", message);
     } else {
         report(&token.line, &format!(" at '{}'", token.lexeme), message);
     }
-
-    Error::Syntax
 }
 
 pub fn runtime_error(error: &Error) {

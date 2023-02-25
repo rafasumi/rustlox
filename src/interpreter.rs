@@ -1,25 +1,31 @@
-use crate::ast::{Expr, Object, Visitor};
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use crate::ast::{AstVisitor, Expr, Object, Stmt};
+use crate::environment::Environment;
 use crate::error::{runtime_error, Error};
 use crate::token::{Token, TokenType};
 
-pub struct Interpreter;
+pub struct Interpreter {
+    environment: Rc<RefCell<Environment>>,
+}
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self
+        Self {
+            environment: Rc::new(RefCell::new(Environment::new_global())),
+        }
     }
 
-    pub fn interpret(&mut self, expr: &Expr) -> Result<(), Error> {
-        match self.visit_expr(expr) {
-            Ok(val) => {
-                println!("{val}");
-                Ok(())
-            }
-            Err(e) => {
+    pub fn interpret(&mut self, statements: &Vec<Stmt>) -> Result<(), Error> {
+        for statement in statements {
+            if let Err(e) = self.visit_stmt(statement) {
                 runtime_error(&e);
-                Err(e)
+                return Err(e);
             }
         }
+
+        Ok(())
     }
 
     fn is_truthy(object: &Object) -> bool {
@@ -36,9 +42,36 @@ impl Interpreter {
             message: String::from("Operands must be numbers."),
         })
     }
+
+    fn execute_block(
+        &mut self,
+        statements: &Vec<Stmt>,
+        environment: Rc<RefCell<Environment>>,
+    ) -> Result<(), Error> {
+        // This assignment here is the main reason why 'environment' is encapsulated in
+        // Rc and RefCell smart pointers.
+        let previous = self.environment.clone();
+
+        // We use this IIFE because we want to reassign 'previous' to 'self.environment'
+        // even if there are errors, but Rust error handling doesn't work like Java's,
+        // that has a try-finally syntax.
+        let result = || -> Result<(), Error> {
+            self.environment = environment;
+
+            for statement in statements {
+                self.visit_stmt(statement)?;
+            }
+
+            Ok(())
+        }();
+
+        self.environment = previous;
+
+        result
+    }
 }
 
-impl Visitor<Result<Object, Error>> for Interpreter {
+impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
     fn visit_expr(&mut self, expr: &Expr) -> Result<Object, Error> {
         match expr {
             Expr::Literal(value) => Ok(value.clone()),
@@ -136,6 +169,48 @@ impl Visitor<Result<Object, Error>> for Interpreter {
                 } else {
                     else_val
                 })
+            }
+            Expr::Variable(name) => self.environment.borrow().get(name),
+            Expr::Assign { name, value } => {
+                let value = self.visit_expr(value)?;
+                self.environment.borrow_mut().assign(name, value.clone())?;
+                Ok(value)
+            }
+        }
+    }
+
+    fn visit_stmt(&mut self, stmt: &crate::ast::Stmt) -> Result<(), Error> {
+        match stmt {
+            Stmt::Expression(expression) => {
+                self.visit_expr(expression)?;
+                Ok(())
+            }
+            Stmt::Print(expression) => {
+                let value = self.visit_expr(expression)?;
+                println!("{value}");
+                Ok(())
+            }
+            Stmt::Var { name, initializer } => {
+                let value = if let Some(expr) = initializer {
+                    self.visit_expr(expr)?
+                } else {
+                    Object::Nil
+                };
+
+                self.environment
+                    .borrow_mut()
+                    .define(name.lexeme.clone(), value);
+
+                Ok(())
+            }
+            Stmt::Block(statements) => {
+                self.execute_block(
+                    statements,
+                    Rc::new(RefCell::new(Environment::new_local(
+                        self.environment.clone(),
+                    ))),
+                )?;
+                Ok(())
             }
         }
     }

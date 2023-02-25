@@ -173,8 +173,13 @@ impl<'a> Scanner<'a> {
     }
 
     fn string(&mut self) -> Result<(), ()> {
-        while self.peek() != '"' && !self.is_at_end() {
-            if self.peek() == '\n' {
+        while !self.is_at_end() {
+            let peek = self.peek();
+            if peek == '"' {
+                break;
+            }
+
+            if peek == '\n' {
                 self.line += 1;
             }
 
@@ -254,8 +259,11 @@ impl<'a> Scanner<'a> {
     }
 
     fn advance(&mut self) -> char {
-        self.current += 1;
-        self.source_iter.next().expect("Unexpected end.")
+        let next_char = self.source_iter.next().expect("Unexpected end.");
+        // This is needed because Rust characters can use more than one position.
+        self.current += next_char.len_utf8();
+
+        next_char
     }
 
     fn match_next(&mut self, expected: char) -> bool {

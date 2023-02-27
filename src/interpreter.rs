@@ -161,13 +161,11 @@ impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
                 else_branch,
             } => {
                 let cond_val = self.visit_expr(&condition)?;
-                let then_val = self.visit_expr(&then_branch)?;
-                let else_val = self.visit_expr(&else_branch)?;
-
+                
                 Ok(if Interpreter::is_truthy(&cond_val) {
-                    then_val
+                    self.visit_expr(&then_branch)?
                 } else {
-                    else_val
+                    self.visit_expr(&else_branch)?
                 })
             }
             Expr::Variable(name) => self.environment.borrow().get(name),

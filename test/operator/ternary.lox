@@ -1,0 +1,11 @@
+print true ? 1 : 2; // expect: 1
+print false ? 1 : 2; // expect: 2
+
+var a = 6;
+print true ? 1 : (a = 4); // expect: 1
+print a; // expect 6
+print false ? 1 : (a = 4); // expect: 4
+print a; // expect 4
+
+print true ? "nested" ? "here" : "bad" : "out"; // expect here
+print false ? "nested" ? "bad" : "bad" : "another" ? "expected" : "out"; // expect expected

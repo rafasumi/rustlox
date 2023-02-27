@@ -163,9 +163,9 @@ impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
                 let cond_val = self.visit_expr(&condition)?;
                 
                 Ok(if Interpreter::is_truthy(&cond_val) {
-                    self.visit_expr(&then_branch)?
+                    self.visit_expr(then_branch)?
                 } else {
-                    self.visit_expr(&else_branch)?
+                    self.visit_expr(else_branch)?
                 })
             }
             Expr::Variable(name) => self.environment.borrow().get(name),
@@ -173,6 +173,20 @@ impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
                 let value = self.visit_expr(value)?;
                 self.environment.borrow_mut().assign(name, value.clone())?;
                 Ok(value)
+            }
+            Expr::Logical { left, operator, right } => {
+                let left = self.visit_expr(&left)?;
+                if operator.token_type == TokenType::Or {
+                    if Interpreter::is_truthy(&left) {
+                        return Ok(left)
+                    }
+                } else {
+                    if !Interpreter::is_truthy(&left) {
+                        return Ok(left)
+                    }
+                }
+
+                Ok(self.visit_expr(&right)?)
             }
         }
     }
@@ -208,6 +222,23 @@ impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
                         self.environment.clone(),
                     ))),
                 )?;
+                Ok(())
+            }
+            Stmt::If { condition, then_branch, else_branch } => {
+                let condition = self.visit_expr(condition)?;
+                if Interpreter::is_truthy(&condition) {
+                    self.visit_stmt(then_branch)?;
+                } else if let Some(statement) = else_branch {
+                    self.visit_stmt(statement)?;
+                }
+
+                Ok(())
+            }
+            Stmt::While { condition, body } => {
+                while Interpreter::is_truthy(&self.visit_expr(condition)?) {
+                    self.visit_stmt(body)?;
+                }
+                
                 Ok(())
             }
         }

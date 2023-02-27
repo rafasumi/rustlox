@@ -58,8 +58,14 @@ impl<'a> Parser<'a> {
     }
 
     fn statement(&mut self) -> Result<Stmt, ()> {
-        if match_types!(self, TokenType::Print) {
+        if match_types!(self, TokenType::If) {
+            self.if_statement()
+        } else if match_types!(self, TokenType::Print) {
             self.print_statement()
+        } else if match_types!(self, TokenType::For) {
+            self.for_statement()
+        } else if match_types!(self, TokenType::While) {
+            self.while_statement()
         } else if match_types!(self, TokenType::LeftBrace) {
             Ok(Stmt::Block(self.block()?))
         } else {
@@ -67,10 +73,89 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn if_statement(&mut self) -> Result<Stmt, ()> {
+        self.consume(TokenType::LeftParen, "Expect '(' after 'if'.")?;
+        let condition = self.expression()?;
+        self.consume(TokenType::RightParen, "Expect ')' after condition.")?;
+
+        let then_branch = Box::new(self.statement()?);
+        let else_branch = if match_types!(self, TokenType::Else) {
+            Some(Box::new(self.statement()?))
+        } else {
+            None
+        };
+
+        Ok(Stmt::If {
+            condition,
+            then_branch,
+            else_branch,
+        })
+    }
+
     fn print_statement(&mut self) -> Result<Stmt, ()> {
         let value = self.expression()?;
         self.consume(TokenType::Semicolon, "Expect ';' after value")?;
         Ok(Stmt::Print(value))
+    }
+
+    fn for_statement(&mut self) -> Result<Stmt, ()> {
+        self.consume(TokenType::LeftParen, "Expect '(' after 'for'.")?;
+        
+        let initializer = if match_types!(self, TokenType::Semicolon) {
+            None
+        } else if match_types!(self, TokenType::Var) {
+            Some(self.var_declaration()?)
+        } else {
+            Some(self.expression_statement()?)
+        };
+        
+        
+        let condition = if !self.check(TokenType::Semicolon) {
+            self.expression()?
+        } else {
+            Expr::Literal(Object::Boolean(true))
+        };
+        
+        self.consume(TokenType::Semicolon, "Expect ';' after loop condition")?;
+        
+        let increment = if !self.check(TokenType::RightParen) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+        
+        self.consume(TokenType::RightParen, "Expect ')' after for clauses.")?;
+
+        let mut body = self.statement()?;
+
+        if let Some(inc_expr) = increment {
+            body = Stmt::Block(vec![body, Stmt::Expression(inc_expr)]);
+        }
+
+        // Desugaring
+        body = Stmt::While {
+            condition,
+            body: Box::new(body),
+        };
+
+        if let Some(init_stmt) = initializer {
+            body = Stmt::Block(vec![init_stmt, body]);
+        }
+
+        Ok(body)
+    }
+
+    fn while_statement(&mut self) -> Result<Stmt, ()> {
+        self.consume(TokenType::LeftParen, "Expect '(' after 'while'.")?;
+        let condition = self.expression()?;
+        self.consume(TokenType::RightParen, "Expect ')' after condition.")?;
+
+        let body = self.statement()?;
+
+        Ok(Stmt::While {
+            condition,
+            body: Box::new(body),
+        })
     }
 
     fn var_declaration(&mut self) -> Result<Stmt, ()> {
@@ -92,7 +177,7 @@ impl<'a> Parser<'a> {
 
     fn expression_statement(&mut self) -> Result<Stmt, ()> {
         let value = self.expression()?;
-        self.consume(TokenType::Semicolon, "Expect ';' after value")?;
+        self.consume(TokenType::Semicolon, "Expect ';' after expression")?;
         Ok(Stmt::Expression(value))
     }
 
@@ -128,7 +213,7 @@ impl<'a> Parser<'a> {
     }
 
     fn ternary(&mut self) -> Result<Expr, ()> {
-        let mut expr = self.equality()?;
+        let mut expr = self.or()?;
 
         if match_types!(self, TokenType::Question) {
             let then_branch = self.ternary()?;
@@ -145,6 +230,38 @@ impl<'a> Parser<'a> {
                 condition: Box::new(expr),
                 then_branch: Box::new(then_branch),
                 else_branch: Box::new(else_branch),
+            }
+        }
+
+        Ok(expr)
+    }
+
+    fn or(&mut self) -> Result<Expr, ()> {
+        let mut expr = self.and()?;
+
+        while match_types!(self, TokenType::Or) {
+            let operator = self.previous().to_owned();
+            let right = self.and()?;
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            }
+        }
+
+        Ok(expr)
+    }
+
+    fn and(&mut self) -> Result<Expr, ()> {
+        let mut expr = self.equality()?;
+
+        while match_types!(self, TokenType::And) {
+            let operator = self.previous().to_owned();
+            let right = self.equality()?;
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
             }
         }
 

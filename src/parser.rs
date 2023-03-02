@@ -380,7 +380,7 @@ impl<'a> Parser<'a> {
         if self.check(token_type) {
             Ok(self.advance())
         } else {
-            parse_error(self.previous(), message);
+            parse_error(self.peek(), message);
             Err(())
         }
     }

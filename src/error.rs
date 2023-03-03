@@ -1,12 +1,11 @@
+use crate::ast::Object;
 use crate::token::{Token, TokenType};
 
 pub enum Error {
     Lexical,
     Syntax,
-    Runtime {
-        token: Token,
-        message: String
-    }
+    Runtime { token: Token, message: String },
+    Return(Object), // Used to interrupt execution flow and propagate return value
 }
 
 pub fn error(line: &u32, message: &str) {

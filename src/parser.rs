@@ -52,6 +52,9 @@ impl<'a> Parser<'a> {
     fn declaration(&mut self) -> Result<Stmt, ()> {
         if match_types!(self, TokenType::Var) {
             self.var_declaration()
+        } else if self.check(TokenType::Fun) && self.check_next(TokenType::Identifier) {
+            self.advance();
+            self.function("function")
         } else {
             self.statement()
         }
@@ -62,6 +65,8 @@ impl<'a> Parser<'a> {
             self.if_statement()
         } else if match_types!(self, TokenType::Print) {
             self.print_statement()
+        } else if match_types!(self, TokenType::Return) {
+            self.return_statement()
         } else if match_types!(self, TokenType::For) {
             self.for_statement()
         } else if match_types!(self, TokenType::While) {
@@ -98,9 +103,23 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Print(value))
     }
 
+    fn return_statement(&mut self) -> Result<Stmt, ()> {
+        let keyword = self.previous().to_owned();
+
+        let value = if !self.check(TokenType::Semicolon) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+
+        self.consume(TokenType::Semicolon, "Expect ';' after value.")?;
+
+        Ok(Stmt::Return { keyword, value })
+    }
+
     fn for_statement(&mut self) -> Result<Stmt, ()> {
         self.consume(TokenType::LeftParen, "Expect '(' after 'for'.")?;
-        
+
         let initializer = if match_types!(self, TokenType::Semicolon) {
             None
         } else if match_types!(self, TokenType::Var) {
@@ -108,22 +127,21 @@ impl<'a> Parser<'a> {
         } else {
             Some(self.expression_statement()?)
         };
-        
-        
+
         let condition = if !self.check(TokenType::Semicolon) {
             self.expression()?
         } else {
             Expr::Literal(Object::Boolean(true))
         };
-        
+
         self.consume(TokenType::Semicolon, "Expect ';' after loop condition")?;
-        
+
         let increment = if !self.check(TokenType::RightParen) {
             Some(self.expression()?)
         } else {
             None
         };
-        
+
         self.consume(TokenType::RightParen, "Expect ')' after for clauses.")?;
 
         let mut body = self.statement()?;
@@ -173,6 +191,17 @@ impl<'a> Parser<'a> {
             "Expect ';' after variable declaration",
         )?;
         Ok(Stmt::Var { name, initializer })
+    }
+
+    fn function(&mut self, kind: &str) -> Result<Stmt, ()> {
+        let name = self
+            .consume(TokenType::Identifier, &format!("Expect {kind} name."))?
+            .to_owned();
+
+        Ok(Stmt::Function {
+            name,
+            definition: self.function_expr(kind)?,
+        })
     }
 
     fn expression_statement(&mut self) -> Result<Stmt, ()> {
@@ -347,8 +376,81 @@ impl<'a> Parser<'a> {
                 right: Box::new(right),
             })
         } else {
-            self.primary()
+            self.call()
         }
+    }
+
+    fn finish_call(&mut self, callee: Expr) -> Result<Expr, ()> {
+        let mut arguments = Vec::new();
+
+        if !self.check(TokenType::RightParen) {
+            loop {
+                if arguments.len() >= 255 {
+                    parse_error(self.peek(), "Can't have more than 255 arguments.");
+                }
+
+                arguments.push(self.expression()?);
+
+                if !match_types!(self, TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+
+        let paren = self
+            .consume(TokenType::RightParen, "Expect ')' after arguments")?
+            .to_owned();
+
+        Ok(Expr::Call {
+            callee: Box::new(callee),
+            paren,
+            arguments,
+        })
+    }
+
+    fn call(&mut self) -> Result<Expr, ()> {
+        let mut expr = self.primary()?;
+
+        loop {
+            if match_types!(self, TokenType::LeftParen) {
+                expr = self.finish_call(expr)?;
+            } else {
+                break;
+            }
+        }
+
+        Ok(expr)
+    }
+
+    fn function_expr(&mut self, kind: &str) -> Result<Expr, ()> {
+        self.consume(TokenType::LeftParen, &format!("Expect '('."))?;
+
+        let mut params = Vec::new();
+        if !self.check(TokenType::RightParen) {
+            loop {
+                if params.len() >= 255 {
+                    parse_error(self.peek(), "Can't have more than 255 parameters.");
+                }
+
+                params.push(
+                    self.consume(TokenType::Identifier, "Expect parameter name.")?
+                        .to_owned(),
+                );
+
+                if !match_types!(self, TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(TokenType::RightParen, "Expect ')' after parameters.")?;
+
+        self.consume(
+            TokenType::LeftBrace,
+            &format!("Expect '{{' before {kind} body."),
+        )?;
+        let body = self.block()?;
+
+        Ok(Expr::Lambda { params, body })
     }
 
     fn primary(&mut self) -> Result<Expr, ()> {
@@ -359,6 +461,10 @@ impl<'a> Parser<'a> {
             TokenType::Number(literal) => Expr::Literal(Object::Number(literal.to_owned())),
             TokenType::String(literal) => Expr::Literal(Object::String(literal.to_owned())),
             TokenType::Identifier => Expr::Variable(self.peek().to_owned()),
+            TokenType::Fun => {
+                self.advance();
+                return Ok(self.function_expr("function")?);
+            }
             TokenType::LeftParen => {
                 // This is needed to consume the LeftParen Token, since we don't use match_types! here
                 self.advance();
@@ -387,10 +493,20 @@ impl<'a> Parser<'a> {
 
     fn check(&self, token_type: TokenType) -> bool {
         if self.is_at_end() {
-            return false;
+            false
+        } else {
+            self.peek().token_type == token_type
         }
+    }
 
-        self.peek().token_type == token_type
+    fn check_next(&self, token_type: TokenType) -> bool {
+        if self.is_at_end() {
+            false
+        } else if self.tokens[self.current + 1].token_type == TokenType::EOF {
+            false
+        } else {
+            self.tokens[self.current + 1].token_type == token_type
+        }
     }
 
     fn advance(&mut self) -> &Token {

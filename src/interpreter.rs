@@ -1,19 +1,40 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::ast::{AstVisitor, Expr, Object, Stmt};
+use crate::callable::LoxCallable;
 use crate::environment::Environment;
 use crate::error::{runtime_error, Error};
 use crate::token::{Token, TokenType};
 
 pub struct Interpreter {
+    pub globals: Rc<RefCell<Environment>>,
     environment: Rc<RefCell<Environment>>,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
+        let globals = Rc::new(RefCell::new(Environment::new_global()));
+
+        globals.borrow_mut().define(
+            String::from("clock"),
+            Object::Callable(LoxCallable::LoxNative {
+                call_impl: |_| -> Object {
+                    Object::Number(
+                        SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap() // Can safely unwrap here because SystemTime::now() will not be before EPOCH
+                            .as_micros() as f64,
+                    )
+                },
+                arity: 0,
+            }),
+        );
+
         Self {
-            environment: Rc::new(RefCell::new(Environment::new_global())),
+            globals: globals.clone(),
+            environment: globals.clone(),
         }
     }
 
@@ -43,13 +64,11 @@ impl Interpreter {
         })
     }
 
-    fn execute_block(
+    pub fn execute_block(
         &mut self,
         statements: &Vec<Stmt>,
         environment: Rc<RefCell<Environment>>,
     ) -> Result<(), Error> {
-        // This assignment here is the main reason why 'environment' is encapsulated in
-        // Rc and RefCell smart pointers.
         let previous = self.environment.clone();
 
         // We use this IIFE because we want to reassign 'previous' to 'self.environment'
@@ -74,7 +93,7 @@ impl Interpreter {
 impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
     fn visit_expr(&mut self, expr: &Expr) -> Result<Object, Error> {
         match expr {
-            Expr::Literal(value) => Ok(value.clone()),
+            Expr::Literal(value) => Ok(value.to_owned()),
             Expr::Grouping(expression) => self.visit_expr(expression),
             Expr::Unary { operator, right } => {
                 let right = self.visit_expr(right)?;
@@ -161,7 +180,7 @@ impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
                 else_branch,
             } => {
                 let cond_val = self.visit_expr(&condition)?;
-                
+
                 Ok(if Interpreter::is_truthy(&cond_val) {
                     self.visit_expr(then_branch)?
                 } else {
@@ -174,20 +193,61 @@ impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
                 self.environment.borrow_mut().assign(name, value.clone())?;
                 Ok(value)
             }
-            Expr::Logical { left, operator, right } => {
+            Expr::Logical {
+                left,
+                operator,
+                right,
+            } => {
                 let left = self.visit_expr(&left)?;
                 if operator.token_type == TokenType::Or {
                     if Interpreter::is_truthy(&left) {
-                        return Ok(left)
+                        return Ok(left);
                     }
                 } else {
                     if !Interpreter::is_truthy(&left) {
-                        return Ok(left)
+                        return Ok(left);
                     }
                 }
 
                 Ok(self.visit_expr(&right)?)
             }
+            Expr::Call {
+                callee,
+                paren,
+                arguments,
+            } => {
+                let callee = self.visit_expr(callee)?;
+
+                let mut evaluated_arguments = Vec::new();
+                for argument in arguments {
+                    evaluated_arguments.push(self.visit_expr(argument)?);
+                }
+
+                if let Object::Callable(function) = callee {
+                    if evaluated_arguments.len() == function.arity() {
+                        Ok(function.call(self, &evaluated_arguments)?)
+                    } else {
+                        Err(Error::Runtime {
+                            token: paren.to_owned(),
+                            message: format!(
+                                "Expected {} arguments but got {}.",
+                                function.arity(),
+                                evaluated_arguments.len()
+                            ),
+                        })
+                    }
+                } else {
+                    Err(Error::Runtime {
+                        token: paren.to_owned(),
+                        message: String::from("Can only call functions and classes."),
+                    })
+                }
+            }
+            Expr::Lambda { .. } => Ok(Object::Callable(LoxCallable::LoxFunction {
+                name: None,
+                definition: Box::new(expr.to_owned()),
+                closure: self.environment.clone(),
+            })),
         }
     }
 
@@ -224,7 +284,11 @@ impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
                 )?;
                 Ok(())
             }
-            Stmt::If { condition, then_branch, else_branch } => {
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
                 let condition = self.visit_expr(condition)?;
                 if Interpreter::is_truthy(&condition) {
                     self.visit_stmt(then_branch)?;
@@ -238,8 +302,30 @@ impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
                 while Interpreter::is_truthy(&self.visit_expr(condition)?) {
                     self.visit_stmt(body)?;
                 }
-                
+
                 Ok(())
+            }
+            Stmt::Function { name, definition } => {
+                let function = LoxCallable::LoxFunction {
+                    name: Some(name.to_owned()),
+                    definition: Box::new(definition.to_owned()),
+                    closure: self.environment.clone(),
+                };
+
+                self.environment
+                    .borrow_mut()
+                    .define(name.lexeme.to_owned(), Object::Callable(function));
+
+                Ok(())
+            }
+            Stmt::Return { value, .. } => {
+                let value = if let Some(return_value) = value {
+                    self.visit_expr(return_value)?
+                } else {
+                    Object::Nil
+                };
+
+                Err(Error::Return(value))
             }
         }
     }

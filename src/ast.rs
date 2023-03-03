@@ -1,7 +1,9 @@
 use std::fmt;
 
+use crate::callable::LoxCallable;
 use crate::token::Token;
 
+#[derive(Clone)]
 pub enum Expr {
     Ternary {
         condition: Box<Expr>,
@@ -28,9 +30,19 @@ pub enum Expr {
         left: Box<Expr>,
         operator: Token,
         right: Box<Expr>,
-    }
+    },
+    Call {
+        callee: Box<Expr>,
+        paren: Token,
+        arguments: Vec<Expr>,
+    },
+    Lambda {
+        params: Vec<Token>,
+        body: Vec<Stmt>,
+    },
 }
 
+#[derive(Clone)]
 pub enum Stmt {
     Expression(Expr),
     Print(Expr),
@@ -42,12 +54,20 @@ pub enum Stmt {
     If {
         condition: Expr,
         then_branch: Box<Stmt>,
-        else_branch: Option<Box<Stmt>>
+        else_branch: Option<Box<Stmt>>,
     },
     While {
         condition: Expr,
-        body: Box<Stmt>
-    }
+        body: Box<Stmt>,
+    },
+    Function {
+        name: Token,
+        definition: Expr,
+    },
+    Return {
+        keyword: Token,
+        value: Option<Expr>,
+    },
 }
 
 #[derive(Clone)]
@@ -56,6 +76,7 @@ pub enum Object {
     Number(f64),
     Boolean(bool),
     Nil,
+    Callable(LoxCallable),
 }
 
 impl Object {
@@ -77,6 +98,7 @@ impl fmt::Display for Object {
             Object::Number(val) => write!(f, "{}", val.to_string()),
             Object::Boolean(val) => write!(f, "{}", val.to_string()),
             Object::Nil => write!(f, "nil"),
+            Object::Callable(val) => write!(f, "{}", val.to_string()),
         }
     }
 }

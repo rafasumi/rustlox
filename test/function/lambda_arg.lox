@@ -1,0 +1,19 @@
+fun apply(n, fn) {
+  for (var i = 1; i <= n; i = i + 1) {
+    print fn(i);
+  }
+}
+
+apply(10, fun (x) {
+  return x*x;
+});
+// 1
+// 4
+// 9
+// 16
+// 25
+// 36
+// 49
+// 64
+// 81
+// 100

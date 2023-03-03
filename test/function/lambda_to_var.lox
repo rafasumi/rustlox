@@ -1,0 +1,5 @@
+var identity = fun (x) {
+  return x;
+};
+
+print identity("Hello!"); // expect: Hello!

@@ -21,6 +21,8 @@ var closure;
       fun returnB() {
         return b;
       }
+
+      returnB();
     }
   }
 

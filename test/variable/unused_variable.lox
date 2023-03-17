@@ -1,0 +1,10 @@
+{
+  var a = "var1";
+  {
+    var a = "var2"; // Error at 'a': Variable 'a' is never used.
+    a = "var3";
+    var b;
+    print b;
+  }
+  print a;
+}

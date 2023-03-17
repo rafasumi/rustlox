@@ -2,7 +2,7 @@ use itertools::{Itertools, MultiPeek};
 use phf_macros::phf_map;
 use std::str::Chars;
 
-use crate::error::{error, Error};
+use crate::error::{error_line};
 use crate::token::{Token, TokenType};
 
 static KEYWORDS: phf::Map<&'static str, TokenType> = phf_map! {
@@ -45,7 +45,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn scan_tokens(&mut self) -> Result<&Vec<Token>, Error> {
+    pub fn scan_tokens(&mut self) -> (&Vec<Token>, bool) {
         let mut had_error = false;
         while !self.is_at_end() {
             // We are at the beginning of the next lexeme.
@@ -55,13 +55,8 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        self.tokens.push(Token::new(TokenType::EOF, "", self.line));
-
-        if !had_error {
-            Ok(&self.tokens)
-        } else {
-            Err(Error::Lexical)
-        }
+        self.tokens.push(Token::new(TokenType::EOF, "", self.line, self.current.clone()));
+        (&self.tokens, had_error)
     }
 
     fn scan_token(&mut self) -> Result<(), ()> {
@@ -133,7 +128,7 @@ impl<'a> Scanner<'a> {
                 } else if Scanner::is_alpha(c) {
                     self.identifier();
                 } else {
-                    error(&self.line, &format!("Unexpected character: \"{c}\"."));
+                    error_line(&self.line, &format!("Unexpected character: \"{c}\"."));
                     return Err(());
                 }
             }
@@ -187,7 +182,7 @@ impl<'a> Scanner<'a> {
         }
 
         if self.is_at_end() {
-            error(&self.line, "Unterminated string.");
+            error_line(&self.line, "Unterminated string.");
             return Err(());
         }
 
@@ -227,7 +222,7 @@ impl<'a> Scanner<'a> {
         }
 
         if comment_level != 0 {
-            error(&self.line, "Unterminated block comment.");
+            error_line(&self.line, "Unterminated block comment.");
             return Err(());
         }
 
@@ -255,7 +250,7 @@ impl<'a> Scanner<'a> {
 
     fn add_token(&mut self, token_type: TokenType) {
         let lexeme = &self.source[self.start..self.current];
-        self.tokens.push(Token::new(token_type, lexeme, self.line))
+        self.tokens.push(Token::new(token_type, lexeme, self.line, self.current.clone()))
     }
 
     fn advance(&mut self) -> char {

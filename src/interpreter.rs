@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -11,6 +12,7 @@ use crate::token::{Token, TokenType};
 pub struct Interpreter {
     pub globals: Rc<RefCell<Environment>>,
     environment: Rc<RefCell<Environment>>,
+    locals: HashMap<Token, usize>,
 }
 
 impl Interpreter {
@@ -35,6 +37,7 @@ impl Interpreter {
         Self {
             globals: globals.clone(),
             environment: globals.clone(),
+            locals: HashMap::new(),
         }
     }
 
@@ -87,6 +90,18 @@ impl Interpreter {
         self.environment = previous;
 
         result
+    }
+
+    pub fn resolve(&mut self, name: Token, depth: usize) {
+        self.locals.insert(name, depth);
+    }
+
+    fn look_up_variable(&self, name: &Token) -> Result<Object, Error> {
+        if let Some(distance) = self.locals.get(name) {
+            self.environment.borrow().get_at(*distance, name)
+        } else {
+            self.globals.borrow().get(name)
+        }
     }
 }
 
@@ -187,10 +202,18 @@ impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
                     self.visit_expr(else_branch)?
                 })
             }
-            Expr::Variable(name) => self.environment.borrow().get(name),
+            Expr::Variable(name) => self.look_up_variable(name),
             Expr::Assign { name, value } => {
                 let value = self.visit_expr(value)?;
-                self.environment.borrow_mut().assign(name, value.clone())?;
+
+                if let Some(distance) = self.locals.get(name) {
+                    self.environment
+                        .borrow_mut()
+                        .assign_at(*distance, name, value.clone())?;
+                } else {
+                    self.globals.borrow_mut().assign(name, value.clone())?;
+                }
+
                 Ok(value)
             }
             Expr::Logical {

@@ -1,5 +1,5 @@
 use crate::ast::*;
-use crate::error::{parse_error, Error};
+use crate::error::{error_token, Error};
 use crate::token::*;
 
 // Used macro to implement the "match" method because Rust functions can't be
@@ -235,7 +235,7 @@ impl<'a> Parser<'a> {
                 });
             }
 
-            parse_error(&equals, "Invalid assignment target.");
+            error_token(&equals, "Invalid assignment target.");
         }
 
         Ok(expr)
@@ -248,7 +248,7 @@ impl<'a> Parser<'a> {
             let then_branch = self.ternary()?;
 
             if !self.check(TokenType::Colon) {
-                parse_error(self.previous(), "Expect ':' in ternary expression");
+                error_token(self.previous(), "Expect ':' in ternary expression");
                 return Err(());
             }
 
@@ -386,7 +386,7 @@ impl<'a> Parser<'a> {
         if !self.check(TokenType::RightParen) {
             loop {
                 if arguments.len() >= 255 {
-                    parse_error(self.peek(), "Can't have more than 255 arguments.");
+                    error_token(self.peek(), "Can't have more than 255 arguments.");
                 }
 
                 arguments.push(self.expression()?);
@@ -429,7 +429,7 @@ impl<'a> Parser<'a> {
         if !self.check(TokenType::RightParen) {
             loop {
                 if params.len() >= 255 {
-                    parse_error(self.peek(), "Can't have more than 255 parameters.");
+                    error_token(self.peek(), "Can't have more than 255 parameters.");
                 }
 
                 params.push(
@@ -473,7 +473,7 @@ impl<'a> Parser<'a> {
                 return Ok(Expr::Grouping(Box::new(expr)));
             }
             _ => {
-                parse_error(self.peek(), "Expect expression.");
+                error_token(self.peek(), "Expect expression.");
                 return Err(());
             }
         };
@@ -486,7 +486,7 @@ impl<'a> Parser<'a> {
         if self.check(token_type) {
             Ok(self.advance())
         } else {
-            parse_error(self.peek(), message);
+            error_token(self.peek(), message);
             Err(())
         }
     }

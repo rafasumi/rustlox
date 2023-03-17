@@ -1,18 +1,20 @@
-use std::fmt;
+use std::{fmt, hash::{Hash, Hasher}};
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct Token {
     pub token_type: TokenType,
     pub lexeme: String,
     pub line: u32,
+    id: usize
 }
 
 impl Token {
-    pub fn new(token_type: TokenType, lexeme: &str, line: u32) -> Self {
+    pub fn new(token_type: TokenType, lexeme: &str, line: u32, id: usize) -> Self {
         Self {
             token_type,
             lexeme: lexeme.to_owned(),
             line,
+            id
         }
     }
 }
@@ -34,6 +36,16 @@ impl fmt::Display for Token {
         }
     }
 }
+
+impl Hash for Token {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.lexeme.hash(state);
+        self.line.hash(state);
+    }
+}
+
+impl Eq for Token {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {

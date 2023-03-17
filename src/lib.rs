@@ -4,11 +4,13 @@ mod environment;
 mod error;
 mod interpreter;
 mod parser;
+mod resolver;
 mod scanner;
 mod token;
 
 use error::Error;
 use parser::Parser;
+use resolver::Resolver;
 use scanner::Scanner;
 use std::{
     fs,
@@ -31,10 +33,21 @@ impl RustLox {
 
     fn run(&mut self, source: &str) -> Result<(), Error> {
         let mut scanner = Scanner::new(source);
-        let tokens = scanner.scan_tokens()?;
+        let (tokens, lexical_error) = scanner.scan_tokens();
 
         let mut parser = Parser::new(tokens);
         let statements = parser.parse()?;
+
+        if lexical_error {
+            return Err(Error::Lexical);
+        }
+
+        let mut resolver = Resolver::new(&mut self.interpreter);
+        resolver.resolve(&statements);
+
+        if resolver.had_error {
+            return Err(Error::Semantic);
+        }
 
         self.interpreter.interpret(&statements)?;
 

@@ -1,5 +1,6 @@
 mod ast;
 mod callable;
+mod class;
 mod environment;
 mod error;
 mod interpreter;

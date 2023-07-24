@@ -1,6 +1,9 @@
+use std::cell::RefCell;
 use std::fmt;
+use std::rc::Rc;
 
 use crate::callable::LoxCallable;
+use crate::class::LoxInstance;
 use crate::token::Token;
 
 #[derive(Clone)]
@@ -36,6 +39,16 @@ pub enum Expr {
         paren: Token,
         arguments: Vec<Expr>,
     },
+    Get {
+        object: Box<Expr>,
+        name: Token,
+    },
+    Set {
+        object: Box<Expr>,
+        name: Token,
+        value: Box<Expr>,
+    },
+    This(Token),
     Lambda {
         params: Vec<Token>,
         body: Vec<Stmt>,
@@ -68,6 +81,10 @@ pub enum Stmt {
         keyword: Token,
         value: Option<Expr>,
     },
+    Class {
+        name: Token,
+        methods: Vec<Stmt>,
+    },
 }
 
 #[derive(Clone)]
@@ -77,6 +94,7 @@ pub enum Object {
     Boolean(bool),
     Nil,
     Callable(LoxCallable),
+    Instance(Rc<RefCell<LoxInstance>>),
 }
 
 impl Object {
@@ -86,6 +104,7 @@ impl Object {
             (Object::Number(lhs), Object::Number(rhs)) => lhs == rhs,
             (Object::String(lhs), Object::String(rhs)) => lhs == rhs,
             (Object::Nil, Object::Nil) => true,
+            (Object::Callable(lhs), Object::Callable(rhs)) => lhs.equals(rhs),
             _ => false,
         }
     }
@@ -99,6 +118,7 @@ impl fmt::Display for Object {
             Object::Boolean(val) => write!(f, "{}", val.to_string()),
             Object::Nil => write!(f, "nil"),
             Object::Callable(val) => write!(f, "{}", val.to_string()),
+            Object::Instance(val) => write!(f, "{}", val.borrow().to_string()),
         }
     }
 }

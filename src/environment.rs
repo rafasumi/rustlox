@@ -48,13 +48,19 @@ impl Environment {
         environment
     }
 
-    pub fn get_at(&self, distance: usize, name: &Token) -> Result<Object, Error> {
+    pub fn get_at(&self, distance: usize, name: &str) -> Result<Object, Error> {
+        // We don't expect this to panic,
+        // because the Resolver already found the scope of the variable
         if distance == 0 {
-            self.get(name)
+            Ok(self.values.get(name).unwrap().to_owned())
         } else {
-            // We don't expect this to panic,
-            // because the Resolver already found the scope of the variable
-            self.ancestor(distance).borrow().get(name)
+            Ok(self
+                .ancestor(distance)
+                .borrow()
+                .values
+                .get(name)
+                .unwrap()
+                .to_owned())
         }
     }
 

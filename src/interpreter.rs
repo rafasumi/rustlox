@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::ast::{AstVisitor, Expr, Object, Stmt};
 use crate::callable::LoxCallable;
+use crate::class::LoxClass;
 use crate::environment::Environment;
 use crate::error::{runtime_error, Error};
 use crate::token::{Token, TokenType};
@@ -98,7 +99,7 @@ impl Interpreter {
 
     fn look_up_variable(&self, name: &Token) -> Result<Object, Error> {
         if let Some(distance) = self.locals.get(name) {
-            self.environment.borrow().get_at(*distance, name)
+            self.environment.borrow().get_at(*distance, &name.lexeme)
         } else {
             self.globals.borrow().get(name)
         }
@@ -216,6 +217,12 @@ impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
 
                 Ok(value)
             }
+            Expr::Lambda { .. } => Ok(Object::Callable(LoxCallable::LoxFunction {
+                name: None,
+                definition: Box::new(expr.to_owned()),
+                closure: self.environment.clone(),
+                is_initializer: false,
+            })),
             Expr::Logical {
                 left,
                 operator,
@@ -266,15 +273,39 @@ impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
                     })
                 }
             }
-            Expr::Lambda { .. } => Ok(Object::Callable(LoxCallable::LoxFunction {
-                name: None,
-                definition: Box::new(expr.to_owned()),
-                closure: self.environment.clone(),
-            })),
+            Expr::Get { object, name } => {
+                if let Object::Instance(instance) = self.visit_expr(&object)? {
+                    instance.borrow().get(name, &instance)
+                } else {
+                    Err(Error::Runtime {
+                        token: name.to_owned(),
+                        message: String::from("Only instances have properties."),
+                    })
+                }
+            }
+            Expr::Set {
+                object,
+                name,
+                value,
+            } => {
+                if let Object::Instance(instance) = self.visit_expr(&object)? {
+                    let value = self.visit_expr(&value)?;
+                    instance
+                        .borrow_mut()
+                        .set(name.lexeme.clone(), value.clone());
+                    Ok(value)
+                } else {
+                    Err(Error::Runtime {
+                        token: name.to_owned(),
+                        message: String::from("Only instances have fields."),
+                    })
+                }
+            }
+            Expr::This(keyword) => self.look_up_variable(keyword),
         }
     }
 
-    fn visit_stmt(&mut self, stmt: &crate::ast::Stmt) -> Result<(), Error> {
+    fn visit_stmt(&mut self, stmt: &Stmt) -> Result<(), Error> {
         match stmt {
             Stmt::Expression(expression) => {
                 self.visit_expr(expression)?;
@@ -333,6 +364,7 @@ impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
                     name: Some(name.to_owned()),
                     definition: Box::new(definition.to_owned()),
                     closure: self.environment.clone(),
+                    is_initializer: false,
                 };
 
                 self.environment
@@ -349,6 +381,33 @@ impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
                 };
 
                 Err(Error::Return(value))
+            }
+            Stmt::Class { name, methods } => {
+                self.environment
+                    .borrow_mut()
+                    .define(name.lexeme.clone(), Object::Nil);
+
+                let mut method_map: HashMap<String, LoxCallable> = HashMap::new();
+                for method in methods {
+                    if let Stmt::Function { name, definition } = method {
+                        let func = LoxCallable::LoxFunction {
+                            name: Some(name.to_owned()),
+                            definition: Box::new(definition.to_owned()),
+                            closure: self.environment.clone(),
+                            is_initializer: name.lexeme.eq("init"),
+                        };
+                        method_map.insert(name.lexeme.to_owned(), func);
+                    }
+                }
+
+                self.environment.borrow_mut().assign(
+                    name,
+                    Object::Callable(LoxCallable::LoxClass {
+                        class: Rc::new(LoxClass::new(name.lexeme.clone(), method_map)),
+                    }),
+                )?;
+
+                Ok(())
             }
         }
     }

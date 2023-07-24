@@ -2,7 +2,7 @@ use crate::ast::*;
 use crate::error::{error_token, Error};
 use crate::token::*;
 
-// Used macro to implement the "match" method because Rust functions can't be
+// Used a macro to implement the "match" method because Rust functions can't be
 // variadic
 macro_rules! match_types {
     ($self:ident, $($token_type:expr),* ) => {
@@ -55,6 +55,8 @@ impl<'a> Parser<'a> {
         } else if self.check(TokenType::Fun) && self.check_next(TokenType::Identifier) {
             self.advance();
             self.function("function")
+        } else if match_types!(self, TokenType::Class) {
+            self.class_declaration()
         } else {
             self.statement()
         }
@@ -204,6 +206,22 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn class_declaration(&mut self) -> Result<Stmt, ()> {
+        let name = self
+            .consume(TokenType::Identifier, "Expect class name.")?
+            .to_owned();
+        self.consume(TokenType::LeftBrace, "Expect '{' before class body.")?;
+
+        let mut methods = Vec::new();
+        while !self.check(TokenType::RightBrace) && !self.is_at_end() {
+            methods.push(self.function("method")?);
+        }
+
+        self.consume(TokenType::RightBrace, "Expect '}' after class body.")?;
+
+        Ok(Stmt::Class { name, methods })
+    }
+
     fn expression_statement(&mut self) -> Result<Stmt, ()> {
         let value = self.expression()?;
         self.consume(TokenType::Semicolon, "Expect ';' after expression")?;
@@ -230,6 +248,12 @@ impl<'a> Parser<'a> {
 
             if let Expr::Variable(name) = expr {
                 return Ok(Expr::Assign {
+                    name,
+                    value: Box::new(value),
+                });
+            } else if let Expr::Get { object, name } = expr {
+                return Ok(Expr::Set {
+                    object,
                     name,
                     value: Box::new(value),
                 });
@@ -414,6 +438,14 @@ impl<'a> Parser<'a> {
         loop {
             if match_types!(self, TokenType::LeftParen) {
                 expr = self.finish_call(expr)?;
+            } else if match_types!(self, TokenType::Dot) {
+                let name = self
+                    .consume(TokenType::Identifier, "Expect property name after '.'.")?
+                    .to_owned();
+                expr = Expr::Get {
+                    object: Box::new(expr),
+                    name,
+                }
             } else {
                 break;
             }
@@ -472,6 +504,7 @@ impl<'a> Parser<'a> {
                 self.consume(TokenType::RightParen, "Expect ')' after expression.")?;
                 return Ok(Expr::Grouping(Box::new(expr)));
             }
+            TokenType::This => Expr::This(self.peek().to_owned()),
             _ => {
                 error_token(self.peek(), "Expect expression.");
                 return Err(());

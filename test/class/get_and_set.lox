@@ -1,0 +1,4 @@
+class Bagel {}
+var bagel = Bagel();
+bagel.topping = "Chocolate";
+print bagel.topping; // expect: "Chocolate"

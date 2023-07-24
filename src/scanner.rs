@@ -2,7 +2,7 @@ use itertools::{Itertools, MultiPeek};
 use phf_macros::phf_map;
 use std::str::Chars;
 
-use crate::error::{error_line};
+use crate::error::error_line;
 use crate::token::{Token, TokenType};
 
 static KEYWORDS: phf::Map<&'static str, TokenType> = phf_map! {
@@ -186,7 +186,7 @@ impl<'a> Scanner<'a> {
             return Err(());
         }
 
-        // The closing ".
+        // The closing double quotation mark.
         self.advance();
 
         // Trim the surrounding quotes.
@@ -255,7 +255,7 @@ impl<'a> Scanner<'a> {
 
     fn advance(&mut self) -> char {
         let next_char = self.source_iter.next().expect("Unexpected end.");
-        // This is needed because Rust characters can use more than one position.
+        // This is needed because Rust characters can use more than one byte.
         self.current += next_char.len_utf8();
 
         next_char

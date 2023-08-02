@@ -48,6 +48,10 @@ pub enum Expr {
         name: Token,
         value: Box<Expr>,
     },
+    Super {
+        keyword: Token,
+        method: Token,
+    },
     This(Token),
     Lambda {
         params: Vec<Token>,
@@ -83,6 +87,7 @@ pub enum Stmt {
     },
     Class {
         name: Token,
+        superclass: Option<Expr>,
         methods: Vec<Stmt>,
     },
 }

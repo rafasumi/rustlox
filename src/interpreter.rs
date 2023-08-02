@@ -301,6 +301,27 @@ impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
                     })
                 }
             }
+            Expr::Super { keyword, method } => {
+                // Can safely unwrap because the resolver guarantees that "super"
+                // is only used when there is a superclass
+                let distance = self.locals.get(keyword).unwrap().to_owned();
+
+                let superclass = self.environment.borrow().get_at(distance, "super")?;
+                let object = self.environment.borrow().get_at(distance - 1, "this")?;
+
+                if let Object::Callable(LoxCallable::LoxClass { class }) = superclass {
+                    if let Some(method) = class.find_method(&method.lexeme) {
+                        Ok(Object::Callable(method.bind(object)))
+                    } else {
+                        Err(Error::Runtime {
+                            token: keyword.to_owned(),
+                            message: format!("Undefined property '{}'.", method.lexeme),
+                        })
+                    }
+                } else {
+                    unreachable!()
+                }
+            }
             Expr::This(keyword) => self.look_up_variable(keyword),
         }
     }
@@ -382,10 +403,44 @@ impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
 
                 Err(Error::Return(value))
             }
-            Stmt::Class { name, methods } => {
+            Stmt::Class {
+                name,
+                superclass,
+                methods,
+            } => {
+                let superclass_ref = if let Some(class_expr) = superclass {
+                    if let Object::Callable(LoxCallable::LoxClass { class }) =
+                        self.visit_expr(class_expr)?
+                    {
+                        Some(class.clone())
+                    } else if let Expr::Variable(var) = class_expr {
+                        return Err(Error::Runtime {
+                            token: var.to_owned(),
+                            message: String::from("Superclass must be a class."),
+                        });
+                    } else {
+                        unreachable!();
+                    }
+                } else {
+                    None
+                };
+
                 self.environment
                     .borrow_mut()
                     .define(name.lexeme.clone(), Object::Nil);
+
+                if let Some(class) = &superclass_ref {
+                    self.environment = Rc::new(RefCell::new(Environment::new_local(
+                        self.environment.clone(),
+                    )));
+
+                    self.environment.borrow_mut().define(
+                        String::from("super"),
+                        Object::Callable(LoxCallable::LoxClass {
+                            class: class.clone(),
+                        }),
+                    )
+                }
 
                 let mut method_map: HashMap<String, LoxCallable> = HashMap::new();
                 for method in methods {
@@ -400,10 +455,19 @@ impl AstVisitor<Result<Object, Error>, Result<(), Error>> for Interpreter {
                     }
                 }
 
+                if superclass_ref.is_some() {
+                    let enclosing = self.environment.borrow().enclosing.clone().unwrap();
+                    self.environment = enclosing;
+                }
+
                 self.environment.borrow_mut().assign(
                     name,
                     Object::Callable(LoxCallable::LoxClass {
-                        class: Rc::new(LoxClass::new(name.lexeme.clone(), method_map)),
+                        class: Rc::new(LoxClass::new(
+                            name.lexeme.clone(),
+                            superclass_ref,
+                            method_map,
+                        )),
                     }),
                 )?;
 

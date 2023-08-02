@@ -210,6 +210,14 @@ impl<'a> Parser<'a> {
         let name = self
             .consume(TokenType::Identifier, "Expect class name.")?
             .to_owned();
+
+        let superclass = if match_types!(self, TokenType::Less) {
+            self.consume(TokenType::Identifier, "Expect superclass name")?;
+            Some(Expr::Variable(self.previous().to_owned()))
+        } else {
+            None
+        };
+
         self.consume(TokenType::LeftBrace, "Expect '{' before class body.")?;
 
         let mut methods = Vec::new();
@@ -219,7 +227,11 @@ impl<'a> Parser<'a> {
 
         self.consume(TokenType::RightBrace, "Expect '}' after class body.")?;
 
-        Ok(Stmt::Class { name, methods })
+        Ok(Stmt::Class {
+            name,
+            superclass,
+            methods,
+        })
     }
 
     fn expression_statement(&mut self) -> Result<Stmt, ()> {
@@ -503,6 +515,17 @@ impl<'a> Parser<'a> {
                 let expr = self.expression()?;
                 self.consume(TokenType::RightParen, "Expect ')' after expression.")?;
                 return Ok(Expr::Grouping(Box::new(expr)));
+            }
+            TokenType::Super => {
+                let keyword = self.peek().to_owned();
+                // This is needed to consume the Super Token, since we don't use match_types! here
+                self.advance();
+
+                self.consume(TokenType::Dot, "Expect '.' after 'super'.")?;
+                let method = self
+                    .consume(TokenType::Identifier, "Expect superclass method name.")?
+                    .to_owned();
+                return Ok(Expr::Super { keyword, method });
             }
             TokenType::This => Expr::This(self.peek().to_owned()),
             _ => {

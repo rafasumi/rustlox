@@ -7,7 +7,7 @@ use crate::error::Error;
 use crate::token::Token;
 
 pub struct Environment {
-    enclosing: Option<Rc<RefCell<Environment>>>,
+    pub enclosing: Option<Rc<RefCell<Environment>>>,
     values: HashMap<String, Object>,
 }
 

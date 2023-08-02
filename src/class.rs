@@ -11,6 +11,7 @@ use crate::token::Token;
 #[derive(Clone)]
 pub struct LoxClass {
     pub name: String,
+    superclass: Option<Rc<LoxClass>>,
     methods: HashMap<String, LoxCallable>,
 }
 
@@ -21,12 +22,26 @@ pub struct LoxInstance {
 }
 
 impl LoxClass {
-    pub fn new(name: String, methods: HashMap<String, LoxCallable>) -> Self {
-        Self { name, methods }
+    pub fn new(
+        name: String,
+        superclass: Option<Rc<LoxClass>>,
+        methods: HashMap<String, LoxCallable>,
+    ) -> Self {
+        Self {
+            name,
+            superclass,
+            methods,
+        }
     }
 
     pub fn find_method(&self, name: &String) -> Option<&LoxCallable> {
-        self.methods.get(name)
+        if self.methods.contains_key(name) {
+            self.methods.get(name)
+        } else if let Some(class) = &self.superclass {
+            class.find_method(name)
+        } else {
+            None
+        }
     }
 }
 

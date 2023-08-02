@@ -35,6 +35,7 @@ enum FunctionType {
 enum ClassType {
     None,
     Class,
+    Subclass,
 }
 
 impl<'a> Resolver<'a> {
@@ -187,12 +188,19 @@ impl<'a> AstVisitor<(), ()> for Resolver<'a> {
                 self.visit_expr(&value);
                 self.visit_expr(&object);
             }
+            Expr::Super { keyword, .. } => {
+                match self.current_class {
+                    ClassType::None => self.error(keyword, "Can't use 'super' outside of a class."),
+                    ClassType::Subclass => self.resolve_local(keyword, true),
+                    _ => self.error(keyword, "Can't use 'super' in a class with no superclass."),
+                };
+            }
             Expr::This(keyword) => {
                 if let ClassType::None = self.current_class {
                     self.error(keyword, "Can't use 'this' outside of a class.")
                 }
 
-                self.resolve_local(keyword, true)
+                self.resolve_local(keyword, true);
             }
             Expr::Literal(_) => (),
         }
@@ -246,11 +254,34 @@ impl<'a> AstVisitor<(), ()> for Resolver<'a> {
                 self.visit_expr(condition);
                 self.visit_stmt(&body);
             }
-            Stmt::Class { name, methods } => {
+            Stmt::Class {
+                name,
+                superclass,
+                methods,
+            } => {
                 let enclosing_class = replace(&mut self.current_class, ClassType::Class);
 
                 self.declare(name);
                 self.define(name);
+
+                if let Some(Expr::Variable(class_name)) = superclass {
+                    if name.lexeme == class_name.lexeme {
+                        self.error(class_name, "A class can't inherit from itself.");
+                    }
+
+                    self.current_class = ClassType::Subclass;
+
+                    self.resolve_local(class_name, true);
+
+                    self.begin_scope();
+                    self.scopes.last_mut().unwrap().insert(
+                        String::from("super"),
+                        Var {
+                            name: None,            // Doesn't have a name Token, as it's not declared
+                            state: VarState::Used, // Assume that 'this' is always used
+                        },
+                    );
+                }
 
                 self.begin_scope();
                 self.scopes.last_mut().unwrap().insert(
@@ -276,6 +307,10 @@ impl<'a> AstVisitor<(), ()> for Resolver<'a> {
                 }
 
                 self.end_scope();
+
+                if superclass.is_some() {
+                    self.end_scope();
+                }
 
                 self.current_class = enclosing_class;
             }
